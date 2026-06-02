@@ -6,6 +6,7 @@ import com.heima.ai.repository.InMemoryHistoryRepository;
 import jakarta.annotation.Resource;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.chat.client.advisor.QuestionAnswerAdvisor;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 
 import org.springframework.ai.chat.memory.ChatMemory;
@@ -17,6 +18,10 @@ import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.ai.ollama.api.OllamaApi;
 import org.springframework.ai.ollama.api.OllamaModel;
 import org.springframework.ai.ollama.api.OllamaOptions;
+import org.springframework.ai.openai.OpenAiEmbeddingModel;
+import org.springframework.ai.vectorstore.SearchRequest;
+import org.springframework.ai.vectorstore.SimpleVectorStore;
+import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -53,7 +58,7 @@ public class CommonConfiguration {
     public OllamaChatModel girlfriendChatModel(OllamaApi ollamaApi) {
         return OllamaChatModel.builder()
                 .ollamaApi(ollamaApi)
-                .defaultOptions(OllamaOptions.builder().model("qwen3.5:9b").build())
+                .defaultOptions(OllamaOptions.builder().model("qwen3.5:2b").build())
                 .build();
     }
     @Bean
@@ -65,12 +70,30 @@ public class CommonConfiguration {
     }
 
     @Bean
-    public ChatClient chatClient(OllamaChatModel catChatModel, ChatMemory defaultChatMemory) {
-        return ChatClient.builder(catChatModel)
-                .defaultSystem("你是一只猫，每句结尾加喵")
+    public ChatClient chatClient(OllamaChatModel girlfriendChatModel, ChatMemory defaultChatMemory) {
+        return ChatClient.builder(girlfriendChatModel)
+                .defaultSystem("你是一个助手，请根据上下文回答问题，遇到上下文没有的问题不要随便编造")
                 .defaultAdvisors(
-                     new SimpleLoggerAdvisor(),
-                        MessageChatMemoryAdvisor.builder(defaultChatMemory).build()).build();
+                        new SimpleLoggerAdvisor(),
+                        MessageChatMemoryAdvisor.builder(defaultChatMemory).build())
+                .build();
+
+    }
+    @Bean
+    public ChatClient pdfClient(OllamaChatModel catChatModel, ChatMemory defaultChatMemory,VectorStore vectorStore) {
+        return ChatClient.builder(catChatModel)
+                .defaultSystem("请根据上下文回答问题，遇到上下文没有的问题不要随便编造")
+                .defaultAdvisors(
+                        new SimpleLoggerAdvisor(),
+                        new QuestionAnswerAdvisor(
+                                vectorStore,
+                                SearchRequest.builder()
+                                        .similarityThreshold(0.6)
+                                        .topK(2)
+                                        .build()
+                        ),
+                        MessageChatMemoryAdvisor.builder(defaultChatMemory)
+                                .build()).build();
 
     }
     @Bean
@@ -83,6 +106,10 @@ public class CommonConfiguration {
                         MessageChatMemoryAdvisor.builder(chatMemory).build())
                 .build();
 
+    }
+    @Bean
+    public VectorStore vectorStore(OpenAiEmbeddingModel openAiEmbeddingModel) {
+        return SimpleVectorStore.builder(openAiEmbeddingModel).build();
     }
 
 //    // -------------------------- 4. 女友专用ChatClient（新增） --------------------------
